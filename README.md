@@ -14,6 +14,7 @@ The application integrates with Gmail using Google OAuth 2.0 and Gmail API, whil
 - Automatic inbox synchronization
 
 **Setup & Run Locally**
+
 **1. Clone the repository**
 ```bash
 git clone  https://github.com/Tharunya16/mailpilot-ai
@@ -40,9 +41,9 @@ cd frontend
 npm install
 npm run dev
 ```
-Open:
+- Open:
 http://localhost:5173
-Google OAuth redirect URI:
+- Google OAuth redirect URI:
 http://localhost:5000/auth/google/callback
 
 **Architecture Decisions & Trade-offs**
