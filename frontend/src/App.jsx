@@ -1371,29 +1371,64 @@ const extractRecipient = (text) => {
   
 
   // Login screen
-  if (!loading && !authenticated) {
-    return (
-      <div className="login-screen">
-        <div className="login-card">
-          <div className="mail-logo">✉</div>
+if (!loading && !authenticated) {
+  return (
+    <div className="login-screen">
+      <div className="login-card">
 
-          <h1>Nebula Mail</h1>
+        <div className="login-brand">
+          <div className="mail-logo">✉</div>
+          <div>
+            <h1>Nebula Mail</h1>
+            <span>AI-powered email workspace</span>
+          </div>
+        </div>
+
+        <div className="login-divider"></div>
+
+        <div className="login-content">
+          <h2>Manage your inbox with AI.</h2>
 
           <p>
-            AI-powered email assistant connected to your Gmail.
+            Connect your Gmail account and control your email
+            using simple natural-language commands.
           </p>
+
+          <div className="login-features">
+            <div>
+              <span>✦</span>
+              <p>Search emails with natural language</p>
+            </div>
+
+            <div>
+              <span>✦</span>
+              <p>Compose and reply with AI assistance</p>
+            </div>
+
+            <div>
+              <span>✦</span>
+              <p>Stay in sync with your Gmail inbox</p>
+            </div>
+          </div>
 
           <a
             href={`${API}/auth/google`}
             className="google-button"
           >
-            <span>G</span>
-            Connect Google Mail
+            <span className="google-icon">G</span>
+            <span>Continue with Google</span>
           </a>
+
+          <div className="login-security">
+            <span>🔒</span>
+            Secure connection with Google OAuth 2.0
+          </div>
         </div>
+
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="mail-app">
