@@ -37,9 +37,9 @@ SESSION_SECRET=YOUR_SESSION_SECRET
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 
 Start the backend:
+
 ```bash
 node server.js
-
 ```
 **3. Frontend**
 
