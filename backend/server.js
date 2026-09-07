@@ -610,6 +610,7 @@ app.get("/api/mail/:id", async (req, res) => {
     res.json({
       id: message.id,
       threadId: message.threadId,
+        messageId: getHeader("Message-ID"),
       sender: getHeader("From"),
       recipient: getHeader("To"),
       subject: getHeader("Subject"),
@@ -1052,6 +1053,186 @@ ${message}
     });
   }
 });
+// ===============================
+// AI REPLY DRAFT GENERATOR
+// ===============================
+app.post("/api/ai/reply", async (req, res) => {
+  try {
+    if (!req.session.tokens) {
+      return res.status(401).json({
+        error: "Gmail not connected",
+      });
+    }
+
+    const {
+      sender,
+      subject,
+      body,
+    } = req.body;
+
+    if (!sender || !body) {
+      return res.status(400).json({
+        error: "Email sender and body are required",
+      });
+    }
+
+    const interaction = await ai.interactions.create({
+      model: "gemini-3.6-flash",
+
+      input: `
+You are Nebula AI inside a Gmail application.
+
+Generate a professional reply to the email below.
+
+IMPORTANT:
+- Return ONLY the email body.
+- Do not include "Subject:"
+- Do not include "To:"
+- Do not add explanations.
+- Keep the reply natural and concise.
+- Do not invent facts.
+- Respond appropriately to the sender's message.
+
+Original sender:
+${sender}
+
+Original subject:
+${subject || "(No subject)"}
+
+Original email:
+${body}
+`,
+    });
+
+    const reply =
+      interaction.output_text?.trim() || "";
+
+    if (!reply) {
+      return res.status(500).json({
+        error: "AI could not generate a reply",
+      });
+    }
+
+    res.json({
+      success: true,
+      reply,
+    });
+
+  } catch (error) {
+    console.error("========== AI REPLY ERROR ==========");
+    console.error("Message:", error.message);
+    console.error("Response:", error.response?.data);
+    console.error("====================================");
+
+    res.status(500).json({
+      error:
+        error.response?.data?.error?.message ||
+        error.message ||
+        "Failed to generate AI reply",
+    });
+  }
+});
+// ===============================
+// REPLY TO GMAIL EMAIL
+// ===============================
+app.post("/api/mail/reply", async (req, res) => {
+  try {
+    if (!req.session.tokens) {
+      return res.status(401).json({
+        error: "Gmail not connected",
+      });
+    }
+
+    const {
+      to,
+      subject,
+      body,
+      threadId,
+      messageId,
+    } = req.body;
+
+    if (!to || !body || !threadId || !messageId) {
+      return res.status(400).json({
+        error:
+          "Recipient, body, threadId and messageId are required",
+      });
+    }
+
+    const oauth2Client = createOAuthClient();
+
+    oauth2Client.setCredentials(
+      req.session.tokens
+    );
+
+    const gmail = google.gmail({
+      version: "v1",
+      auth: oauth2Client,
+    });
+
+    const replySubject = subject?.startsWith("Re:")
+      ? subject
+      : `Re: ${subject || ""}`;
+
+    const rawMessage = [
+      `To: ${to}`,
+      `Subject: ${replySubject}`,
+      `In-Reply-To: <${messageId}>`,
+      `References: <${messageId}>`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=UTF-8",
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      body,
+    ].join("\r\n");
+
+    const encodedMessage = Buffer.from(
+      rawMessage,
+      "utf8"
+    )
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+
+    const result =
+      await gmail.users.messages.send({
+        userId: "me",
+
+        requestBody: {
+          raw: encodedMessage,
+          threadId,
+        },
+      });
+
+    console.log("========== REPLY SENT ==========");
+    console.log("Message ID:", result.data.id);
+    console.log("Thread ID:", threadId);
+    console.log("================================");
+
+    res.json({
+      success: true,
+      messageId: result.data.id,
+      threadId,
+    });
+
+  } catch (error) {
+    console.error("========== REPLY ERROR ==========");
+    console.error("Message:", error.message);
+    console.error(
+      "Response:",
+      error.response?.data
+    );
+    console.error("=================================");
+
+    res.status(500).json({
+      error:
+        error.response?.data?.error?.message ||
+        error.message ||
+        "Failed to send reply",
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Backend running at http://localhost:${PORT}`);
 });

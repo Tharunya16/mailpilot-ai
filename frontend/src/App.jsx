@@ -27,11 +27,14 @@ const [filterRead, setFilterRead] = useState("all");
     },
   ]);
   const [aiLoading, setAiLoading] = useState(false);
-
+const [pendingSend, setPendingSend] = useState(false);
   const [compose, setCompose] = useState({
     to: "",
     subject: "",
     body: "",
+     isReply: false,
+  threadId: "",
+  messageId: "",
   });
 
 useEffect(() => {
@@ -208,6 +211,9 @@ const openEmail = async (email) => {
       to: "",
       subject: "",
       body: "",
+      isReply: false,
+    threadId: "",
+    messageId: "",
     });
   };
 
@@ -215,15 +221,25 @@ const openEmail = async (email) => {
     setComposeOpen(false);
   };
 
-  const fillCompose = ({ to = "", subject = "", body = "" }) => {
-    setCompose({
-      to,
-      subject,
-      body,
-    });
+  const fillCompose = ({
+  to = "",
+  subject = "",
+  body = "",
+  isReply = false,
+  threadId = "",
+  messageId = "",
+}) => {
+  setCompose({
+    to,
+    subject,
+    body,
+    isReply,
+    threadId,
+    messageId,
+  });
 
-    setComposeOpen(true);
-  };
+  setComposeOpen(true);
+};
 
   const handleComposeChange = (e) => {
     setCompose({
@@ -231,41 +247,73 @@ const openEmail = async (email) => {
       [e.target.name]: e.target.value,
     });
   };
+const sendEmail = async () => {
+  if (!compose.to || !compose.body) {
+    alert("Please fill recipient and message");
+    return;
+  }
 
-  const sendEmail = async () => {
-    if (!compose.to || !compose.subject || !compose.body) {
-      alert("Please fill To, Subject and Message");
-      return;
-    }
+  try {
+    const endpoint = compose.isReply
+      ? `${API}/api/mail/reply`
+      : `${API}/api/mail/send`;
 
-    try {
-      const response = await fetch(`${API}/api/mail/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify(compose),
-      });
+    const payload = compose.isReply
+      ? {
+          to: compose.to,
+          subject: compose.subject,
+          body: compose.body,
+          threadId: compose.threadId,
+          messageId: compose.messageId,
+        }
+      : {
+          to: compose.to,
+          subject: compose.subject,
+          body: compose.body,
+        };
 
-      const data = await response.json();
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
 
-      if (response.ok) {
-        alert("Email sent successfully!");
-        closeCompose();
+    const data = await response.json();
 
-        addAiMessage(
-          "assistant",
-          "Email sent successfully! ✈️"
-        );
-      } else {
-        alert(data.error || "Failed to send email");
+    if (response.ok) {
+      closeCompose();
+
+      addAiMessage(
+        "assistant",
+        compose.isReply
+          ? "✅ Your reply was sent successfully."
+          : "✈️ Email sent successfully!"
+      );
+
+      if (view === "sent") {
+        loadSent(false);
       }
-    } catch (error) {
-      console.error(error);
-      alert("Failed to send email");
+    } else {
+      alert(
+        data.error ||
+          "Failed to send email"
+      );
     }
-  };
+
+  } catch (error) {
+    console.error("Send email error:", error);
+
+    alert(
+      compose.isReply
+        ? "Failed to send reply"
+        : "Failed to send email"
+    );
+  }
+};
+  
 const searchEmails = async (query) => {
   try {
     setLoading(true);
@@ -517,719 +565,970 @@ const clearFilters = async () => {
     await loadInbox();
   }
 };
-  // -----------------------------
-  // AI COMMAND HANDLER
-  // -----------------------------
-const handleAiCommand = async () => {
+const generateAiReply = async () => {
+  if (!selectedEmail) {
+    addAiMessage(
+      "assistant",
+      "📩 Please open an email first, then ask me to reply."
+    );
+
+    return;
+  }
+
+  try {
+    setAiLoading(true);
+
+    addAiMessage(
+      "assistant",
+      "🤖 I'm drafting a reply..."
+    );
+
+    const response = await fetch(
+      `${API}/api/ai/reply`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          sender: selectedEmail.sender,
+          subject: selectedEmail.subject,
+          body:
+            selectedEmail.body ||
+            selectedEmail.snippet ||
+            "",
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      addAiMessage(
+        "assistant",
+        data.error ||
+          "I couldn't generate a reply."
+      );
+
+      return;
+    }
+
+    fillCompose({
+      to: extractEmail(
+        selectedEmail.sender
+      ),
+
+      subject: `Re: ${
+        selectedEmail.subject || ""
+      }`,
+
+      body: data.reply,
+
+      isReply: true,
+
+      threadId:
+        selectedEmail.threadId || "",
+
+      messageId:
+        selectedEmail.messageId || "",
+    });
+
+    addAiMessage(
+      "assistant",
+      "✍️ I've drafted a reply for you. Please review it before sending."
+    );
+
+  } catch (error) {
+    console.error(
+      "AI reply error:",
+      error
+    );
+
+    addAiMessage(
+      "assistant",
+      "Something went wrong while generating the reply."
+    );
+  } finally {
+    setAiLoading(false);
+  }
+};
+  const handleAiCommand = async () => {
   const command = aiInput.trim();
 
   if (!command || aiLoading) {
     return;
   }
 
-  addAiMessage("user", command);
-  setAiInput("");
-  setAiLoading(true);
-try {
   const lower = command.toLowerCase();
 
-// -----------------------------
-// OPEN LATEST EMAIL
-// -----------------------------
-if (
-  lower.includes("open latest email") ||
-  lower.includes("open the latest email")
-) {
   // -----------------------------------
-  // CHECK IF A SENDER WAS SPECIFIED
-  // Example:
-  // Open latest email from Google
-  // Open latest email from David
+  // SEND / CANCEL PENDING EMAIL
   // -----------------------------------
-
-  const senderMatch = command.match(
-    /open (?:the )?latest email from (.+)$/i
-  );
-
-  if (senderMatch) {
-    const sender = senderMatch[1].trim();
-
-    addAiMessage(
-      "assistant",
-      `📩 Finding the latest email from ${sender}...`
-    );
-
-    const results = await searchEmails(
-      `from:"${sender}"`
-    );
-
-    if (results.length > 0) {
-      // Gmail search normally returns newest first
-      const latestEmail = results[0];
-
-      await openEmail(latestEmail);
-
+  if (pendingSend) {
+    if (
+      lower === "yes" ||
+      lower === "yes send it" ||
+      lower === "send it" ||
+      lower === "send" ||
+      lower.includes("yes, send") ||
+      lower.includes("go ahead and send")
+    ) {
       addAiMessage(
         "assistant",
-        `Opened the latest email from ${
-          latestEmail.sender || sender
-        }.`
-      );
-    } else {
-      addAiMessage(
-        "assistant",
-        `I couldn't find any emails from ${sender}.`
-      );
-    }
-
-    return;
-  }
-
-  // -----------------------------------
-  // NORMAL LATEST EMAIL
-  // -----------------------------------
-
-  addAiMessage(
-    "assistant",
-    "📩 Opening the latest email..."
-  );
-
-  const email = await openLatestEmail();
-
-  if (email) {
-    const subject = email.subject?.trim();
-    const sender = email.sender?.trim();
-
-    addAiMessage(
-      "assistant",
-      subject
-        ? `Opened "${subject}".`
-        : sender
-          ? `Opened the latest email from ${sender}.`
-          : "Opened the latest email."
-    );
-  } else {
-    addAiMessage(
-      "assistant",
-      "I couldn't find any emails."
-    );
-  }
-
-  return;
-}
- 
-  // -----------------------------
-// DIRECT GMAIL SEARCH
-// -----------------------------
-
-// -----------------------------
-// DIRECT REPLY COMMAND
-// -----------------------------
-if (
-  lower.includes("reply to this") ||
-  lower.includes("reply to this email") ||
-  lower.includes("reply to this message")
-) {
-  if (!selectedEmail) {
-    addAiMessage(
-      "assistant",
-      "📩 Please open an email first, then ask me to reply to it."
-    );
-
-    return;
-  }
-
-  // Extract the reply message
-  const replyMatch = command.match(
-    /reply to this(?: email| message)?\s+(?:saying|with|that)\s+(.+)/i
-  );
-
-  if (!replyMatch) {
-    addAiMessage(
-      "assistant",
-      "✉️ Sure! Tell me what you want me to say in the reply."
-    );
-
-    return;
-  }
-
-  const replyBody = replyMatch[1].trim();
-
-  const recipient =
-    extractEmail(selectedEmail.sender) ||
-    selectedEmail.senderEmail ||
-    "";
-
-  const subject = selectedEmail.subject?.startsWith("Re:")
-    ? selectedEmail.subject
-    : `Re: ${selectedEmail.subject || ""}`;
-
-  fillCompose({
-    to: recipient,
-    subject: subject,
-    body: replyBody,
-  });
-
-  addAiMessage(
-    "assistant",
-    `↩️ Reply prepared to ${
-      selectedEmail.sender || recipient
-    }. Please review it and click Send.`
-  );
-
-  return;
-}
-// -----------------------------------
-// DIRECT FORWARD EMAIL
-// -----------------------------------
-
-if (
-  lower.includes("forward this email") ||
-  lower.includes("forward this message") ||
-  lower.startsWith("forward")
-) {
-  if (!selectedEmail) {
-    addAiMessage(
-      "assistant",
-      "📩 Please open an email first, then ask me to forward it."
-    );
-    return;
-  }
-
-  const recipientMatch = command.match(
-    /(?:to|for)\s+([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
-  );
-
-  if (!recipientMatch) {
-    addAiMessage(
-      "assistant",
-      "↗️ Sure! Tell me the recipient's email address."
-    );
-    return;
-  }
-
-  const recipient = recipientMatch[1];
-
-  const originalBody = selectedEmail.body || "";
-
-  const forwardedBody =
-    `---------- Forwarded message ----------\n` +
-    `From: ${selectedEmail.sender || ""}\n` +
-    `Subject: ${selectedEmail.subject || ""}\n\n` +
-    `${originalBody}`;
-
-  fillCompose({
-    to: recipient,
-    subject: `Fwd: ${selectedEmail.subject || ""}`,
-    body: forwardedBody,
-  });
-
-  addAiMessage(
-    "assistant",
-    `↗️ I've prepared this email to be forwarded to ${recipient}. Please review it and click Send.`
-  );
-
-  return;
-}
-// -----------------------------
-// DIRECT COMPOSE COMMAND
-// -----------------------------
-
-if (
-  lower.includes("compose an email") ||
-  lower.includes("compose email") ||
-  lower.startsWith("compose")
-) {
-  const recipientMatch = command.match(
-    /(?:to|for)\s+([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
-  );
-
-  if (!recipientMatch) {
-    addAiMessage(
-      "assistant",
-      "✉️ Sure! Tell me the recipient's email address."
-    );
-    return;
-  }
-
-  const recipient = recipientMatch[1];
-
-  const subjectMatch = command.match(
-    /subject\s*:\s*(.*?)(?=\s+(?:saying|with message|and say|and tell)\s+|$)/i
-  );
-
-  const bodyMatch = command.match(
-    /(?:saying|with message|and say|and tell)\s+(.+)$/i
-  );
-
-  const subject = subjectMatch
-    ? subjectMatch[1].trim()
-    : "";
-
-  const body = bodyMatch
-    ? bodyMatch[1].trim()
-    : "";
-
-  fillCompose({
-    to: recipient,
-    subject,
-    body,
-  });
-
-  addAiMessage(
-    "assistant",
-    `✉️ I've prepared an email to ${recipient}. Please review it and click Send.`
-  );
-
-  return;
-}
-// -----------------------------------
-// DIRECT MARK READ / UNREAD COMMANDS
-// -----------------------------------
-
-if (
-  lower.includes("mark this email as read") ||
-  lower.includes("mark this email read")
-) {
-  if (!selectedEmail) {
-    addAiMessage(
-      "assistant",
-      "📩 Please open an email first, then ask me to mark it as read."
-    );
-    return;
-  }
-
-  addAiMessage(
-    "assistant",
-    "📖 Marking this email as read..."
-  );
-
-  const success = await markAsRead(selectedEmail.id);
-
-  addAiMessage(
-    "assistant",
-    success
-      ? "✅ Done! This email has been marked as read."
-      : "❌ I couldn't mark the email as read."
-  );
-
-  return;
-}
-
-
-if (
-  lower.includes("mark this email as unread") ||
-  lower.includes("mark this email unread")
-) {
-  if (!selectedEmail) {
-    addAiMessage(
-      "assistant",
-      "📬 Please open an email first, then ask me to mark it as unread."
-    );
-    return;
-  }
-
-  addAiMessage(
-    "assistant",
-    "📬 Marking this email as unread..."
-  );
-
-  const success = await markAsUnread(selectedEmail.id);
-
-  addAiMessage(
-    "assistant",
-    success
-      ? "✅ Done! This email has been marked as unread."
-      : "❌ I couldn't mark the email as unread."
-  );
-
-  return;
-}
-// -----------------------------------
-// DIRECT DELETE EMAIL COMMAND
-// -----------------------------------
-
-if (
-  lower.includes("delete this email") ||
-  lower.includes("delete this message") ||
-  lower === "delete email" ||
-  lower === "delete this"
-) {
-  if (!selectedEmail) {
-    addAiMessage(
-      "assistant",
-      "📩 Please open an email first, then ask me to delete it."
-    );
-    return;
-  }
-
-  addAiMessage(
-    "assistant",
-    "🗑️ Deleting this email..."
-  );
-
-  const success = await deleteEmail(selectedEmail.id);
-
-  if (success) {
-    addAiMessage(
-      "assistant",
-      "✅ Email deleted successfully."
-    );
-    setSelectedEmail(null);
-  } else {
-    addAiMessage(
-      "assistant",
-      "❌ I couldn't delete this email."
-    );
-  }
-
-  return;
-}
-// -----------------------------------
-// DIRECT SEARCH / FILTER COMMANDS
-// -----------------------------------
-
-let searchParts = [];
-let searchDescriptions = [];
-
-// -----------------------------------
-// NATURAL LANGUAGE DATE FILTER
-// Supports ANY number of days
-//
-// last 1 day
-// last 2 days
-// last 3 days
-// last 7 days
-// last 30 days
-// last 100 days
-// past 5 days
-// within 10 days
-// -----------------------------------
-
-const daysMatch = lower.match(
-  /\b(?:last|past|within)\s+(\d+)\s+days?\b/i
-);
-
-const days = daysMatch ? Number(daysMatch[1]) : null;
-
-// Remove date phrase from command
-let filterText = lower;
-
-if (daysMatch) {
-  filterText = filterText
-    .replace(daysMatch[0], "")
-    .trim();
-}
-
-// Remove leftover "from" caused by:
-// "from Google from last 7 days"
-filterText = filterText
-  .replace(/\s+from\s*$/i, "")
-  .trim();
-
-// -----------------------------------
-// DATE QUERY
-// -----------------------------------
-if (days && days > 0) {
-  const today = new Date();
-
-  // Start date
-  const startDate = new Date(today);
-  startDate.setHours(0, 0, 0, 0);
-  startDate.setDate(startDate.getDate() - (days - 1));
-
-  // Tomorrow = exclusive end date
-  const endDate = new Date(today);
-  endDate.setHours(0, 0, 0, 0);
-  endDate.setDate(endDate.getDate() + 1);
-
-  // Gmail date format: YYYY/MM/DD
-  const formatGmailDate = (date) => {
-    return `${date.getFullYear()}/${String(
-      date.getMonth() + 1
-    ).padStart(2, "0")}/${String(
-      date.getDate()
-    ).padStart(2, "0")}`;
-  };
-
-  const startDateString = formatGmailDate(startDate);
-  const endDateString = formatGmailDate(endDate);
-
-  searchParts.push(
-    `after:${startDateString}`,
-    `before:${endDateString}`
-  );
-
-  searchDescriptions.push(
-    `emails from the last ${days} day${days === 1 ? "" : "s"}`
-  );
-
-  console.log("DATE FILTER:", {
-    days,
-    startDate: startDateString,
-    endDate: endDateString,
-  });
-}
-// -----------------------------------
-// READ / UNREAD
-// -----------------------------------
-
-const wantsUnread =
-  /\bunread\s+(?:emails?|messages?)\b/i.test(
-    filterText
-  );
-
-const wantsRead =
-  !wantsUnread &&
-  /\bread\s+(?:emails?|messages?)\b/i.test(
-    filterText
-  );
-
-if (wantsUnread) {
-  searchParts.push("is:unread");
-  searchDescriptions.push("unread emails");
-}
-
-if (wantsRead) {
-  searchParts.push("is:read");
-  searchDescriptions.push("read emails");
-}
-
-// -----------------------------------
-// SENDER + OPTIONAL KEYWORD
-//
-// Examples:
-//
-// Find emails from Google
-// Find emails from Google from last 7 days
-// Find emails from Google about project
-// Find emails from Google about project from last 7 days
-// -----------------------------------
-
-const senderMatch = filterText.match(
-  /\b(?:find|show|search)\s+(?:me\s+)?(?:emails?|messages?)\s+from\s+(.+?)(?:\s+about\s+(.+))?$/i
-);
-
-if (senderMatch) {
-  let senderName = senderMatch[1].trim();
-  const keyword = senderMatch[2]?.trim();
-
-  // Safety: remove accidental trailing "from"
-  senderName = senderName
-    .replace(/\s+from\s*$/i, "")
-    .trim();
-
-  if (senderName) {
-    searchParts.push(
-      `from:"${senderName}"`
-    );
-
-    searchDescriptions.push(
-      `emails from ${senderName}`
-    );
-  }
-
-  if (keyword) {
-    searchParts.push(
-      `"${keyword}"`
-    );
-
-    searchDescriptions.push(
-      `about ${keyword}`
-    );
-  }
-}
-
-// -----------------------------------
-// ABOUT / KEYWORD WITHOUT SENDER
-//
-// Examples:
-//
-// Find emails about project
-// Find emails about project from last 7 days
-// -----------------------------------
-
-if (!senderMatch) {
-  const aboutMatch = filterText.match(
-    /\babout\s+(.+)$/i
-  );
-
-  if (aboutMatch) {
-    const keyword = aboutMatch[1].trim();
-
-    if (keyword) {
-      searchParts.push(
-        `"${keyword}"`
+        "✈️ Sending the email..."
       );
 
-      searchDescriptions.push(
-        `about ${keyword}`
-      );
-    }
-  }
-}
-
-// -----------------------------------
-// PROJECT EMAILS
-// -----------------------------------
-
-if (
-  /\b(?:show|find|search)\s+project\s+emails?\b/i.test(
-    filterText
-  )
-) {
-  searchParts.push("project");
-
-  searchDescriptions.push(
-    "about project"
-  );
-}
-
-// -----------------------------------
-// BUILD FINAL GMAIL QUERY
-// -----------------------------------
-
-const searchQuery =
-  searchParts.join(" ");
-
-const searchDescription =
-  searchDescriptions.length
-    ? searchDescriptions.join(" and ")
-    : "";
-
-// -----------------------------------
-// DEBUG
-// -----------------------------------
-
-console.log(
-  "================================="
-);
-
-console.log(
-  "🔎 AI SEARCH COMMAND:",
-  command
-);
-
-console.log(
-  "🔎 Filter text:",
-  filterText
-);
-
-console.log(
-  "🔎 Days:",
-  days
-);
-
-console.log(
-  "🔎 Search parts:",
-  searchParts
-);
-
-console.log(
-  "🔎 FINAL GMAIL QUERY:",
-  searchQuery
-);
-
-console.log(
-  "================================="
-);
-
-// -----------------------------------
-// EXECUTE SEARCH
-// -----------------------------------
-
-if (searchQuery) {
-  addAiMessage(
-    "assistant",
-    `🔎 Searching for ${searchDescription}...`
-  );
-
-  const results =
-    await searchEmails(searchQuery);
-
-  addAiMessage(
-    "assistant",
-    results.length
-      ? `I found ${results.length} matching email${
-          results.length === 1 ? "" : "s"
-        }.`
-      : `I couldn't find any ${searchDescription}.`
-  );
-
-  return;
-}
-  // -----------------------------
-  // GEMINI AI
-  // -----------------------------
-  const response = await fetch(`${API}/api/ai`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
-    body: JSON.stringify({
-      message: command,
-    }),
-  });
-
- 
-
-    const data = await response.json();
-
-    console.log("AI response:", data);
-
-    if (!response.ok) {
-      addAiMessage(
-        "assistant",
-        data.error || "AI request failed."
-      );
+      setPendingSend(false);
+      await sendEmail();
       return;
     }
 
-    // --------------------------------
-    // GEMINI FUNCTION CALL
-    // --------------------------------
+    if (
+      lower === "no" ||
+      lower === "no don't send" ||
+      lower === "cancel" ||
+      lower.includes("don't send") ||
+      lower.includes("do not send")
+    ) {
+      setPendingSend(false);
+      closeCompose();
 
-    if (data.type === "function_call") {
-      const { name, arguments: args } = data;
+      addAiMessage(
+        "assistant",
+        "❌ Okay, I won't send it."
+      );
 
-      console.log("AI function:", name);
-      console.log("AI arguments:", args);
+      return;
+    }
+  }
 
-      // -------------------------------
-      // FILL COMPOSE
-      // -------------------------------
-      if (name === "fillCompose") {
-        fillCompose({
-          to: args?.to || "",
-          subject: args?.subject || "",
-          body: args?.body || "",
-        });
+  addAiMessage("user", command);
+  setAiInput("");
+  setAiLoading(true);
+
+  try {
+    // -----------------------------------
+    // OPEN LATEST EMAIL
+    // -----------------------------------
+    if (
+      lower.includes("open latest email") ||
+      lower.includes("open the latest email")
+    ) {
+      const senderMatch = command.match(
+        /open (?:the )?latest email from (.+)$/i
+      );
+
+      if (senderMatch) {
+        const sender = senderMatch[1].trim();
 
         addAiMessage(
           "assistant",
-          `I've prepared the email for ${
-            args?.to || "the recipient"
-          }. Please review it and click Send.`
+          `📩 Finding the latest email from ${sender}...`
+        );
+
+        const results = await searchEmails(
+          `from:"${sender}"`
+        );
+
+        if (results.length > 0) {
+          const latestEmail = results[0];
+
+          await openEmail(latestEmail);
+
+          addAiMessage(
+            "assistant",
+            `Opened the latest email from ${
+              latestEmail.sender || sender
+            }.`
+          );
+        } else {
+          addAiMessage(
+            "assistant",
+            `I couldn't find any emails from ${sender}.`
+          );
+        }
+
+        return;
+      }
+
+      addAiMessage(
+        "assistant",
+        "📩 Opening the latest email..."
+      );
+
+      const email = await openLatestEmail();
+
+      if (email) {
+        const subject = email.subject?.trim();
+        const sender = email.sender?.trim();
+
+        addAiMessage(
+          "assistant",
+          subject
+            ? `Opened "${subject}".`
+            : sender
+              ? `Opened the latest email from ${sender}.`
+              : "Opened the latest email."
+        );
+      } else {
+        addAiMessage(
+          "assistant",
+          "I couldn't find any emails."
+        );
+      }
+
+      return;
+    }
+
+    // -----------------------------------
+    // REPLY TO CURRENT EMAIL
+    // -----------------------------------
+    if (
+      lower.includes("reply to this") ||
+      lower.includes("reply this email") ||
+      lower.includes("reply to this email") ||
+      lower.includes("reply to this message")
+    ) {
+      if (!selectedEmail) {
+        addAiMessage(
+          "assistant",
+          "Please open an email first, then ask me to reply to it."
         );
 
         return;
       }
 
-      // -------------------------------
+      const recipient = extractEmail(
+        selectedEmail.sender
+      );
+
+      if (!recipient) {
+        addAiMessage(
+          "assistant",
+          "I couldn't determine the sender's email address."
+        );
+
+        return;
+      }
+
+      // -----------------------------------
+      // USER PROVIDED REPLY CONTENT
+      // -----------------------------------
+      const replyMatch = command.match(
+        /reply(?: to)? this(?: email| message)?\s+(?:saying|with|that)\s+(.+)/i
+      );
+
+      if (replyMatch) {
+        const replyBody = replyMatch[1].trim();
+
+        fillCompose({
+          to: recipient,
+          subject: selectedEmail.subject?.startsWith("Re:")
+            ? selectedEmail.subject
+            : `Re: ${selectedEmail.subject || ""}`,
+          body: replyBody,
+          isReply: true,
+          threadId: selectedEmail.threadId || "",
+          messageId: selectedEmail.messageId || "",
+        });
+
+        addAiMessage(
+          "assistant",
+          `↩️ Reply prepared to ${recipient}. Please review it and click Send.`
+        );
+
+        return;
+      }
+
+      // -----------------------------------
+      // AI GENERATES REPLY
+      // -----------------------------------
+      addAiMessage(
+        "assistant",
+        "🤖 I'm drafting a reply..."
+      );
+
+      const response = await fetch(
+        `${API}/api/ai/reply`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            sender: selectedEmail.sender,
+            subject: selectedEmail.subject,
+            body:
+              selectedEmail.body ||
+              selectedEmail.snippet ||
+              "",
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      console.log(
+        "🤖 AI GENERATED REPLY RESPONSE:",
+        data
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Failed to generate reply"
+        );
+      }
+
+      const generatedReply =
+        data.reply?.trim();
+
+      if (!generatedReply) {
+        throw new Error(
+          "AI returned an empty reply"
+        );
+      }
+
+      const replySubject =
+        selectedEmail.subject?.startsWith("Re:")
+          ? selectedEmail.subject
+          : `Re: ${selectedEmail.subject || ""}`;
+
+      fillCompose({
+        to: recipient,
+        subject: replySubject,
+        body: generatedReply,
+        isReply: true,
+        threadId:
+          selectedEmail.threadId || "",
+        messageId:
+          selectedEmail.messageId || "",
+      });
+
+      addAiMessage(
+        "assistant",
+        `✍️ I've drafted a reply to ${recipient} based on the email you're viewing. Please review it before sending.`
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // FORWARD EMAIL
+    // -----------------------------------
+    if (
+      lower.includes("forward this email") ||
+      lower.includes("forward this message") ||
+      lower.startsWith("forward")
+    ) {
+      if (!selectedEmail) {
+        addAiMessage(
+          "assistant",
+          "📩 Please open an email first, then ask me to forward it."
+        );
+
+        return;
+      }
+
+      const recipientMatch = command.match(
+        /(?:to|for)\s+([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
+      );
+
+      if (!recipientMatch) {
+        addAiMessage(
+          "assistant",
+          "↗️ Sure! Tell me the recipient's email address."
+        );
+
+        return;
+      }
+
+      const recipient =
+        recipientMatch[1];
+
+      const originalBody =
+        selectedEmail.body ||
+        selectedEmail.snippet ||
+        "";
+
+      const forwardedBody =
+        `---------- Forwarded message ----------\n` +
+        `From: ${selectedEmail.sender || ""}\n` +
+        `Subject: ${selectedEmail.subject || ""}\n\n` +
+        `${originalBody}`;
+
+      fillCompose({
+        to: recipient,
+        subject: `Fwd: ${
+          selectedEmail.subject || ""
+        }`,
+        body: forwardedBody,
+        isReply: false,
+        threadId: "",
+        messageId: "",
+      });
+
+      setPendingSend(true);
+
+      addAiMessage(
+        "assistant",
+        `↗️ I've prepared this email to be forwarded to ${recipient}.
+
+Please review the forwarded message.
+
+Would you like me to send it? Reply "Yes" to send or "No" to cancel.`
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // COMPOSE EMAIL
+    // -----------------------------------
+    if (
+      lower.includes("compose an email") ||
+      lower.includes("compose email") ||
+      lower.startsWith("compose")
+    ) {
+      const recipientMatch = command.match(
+        /(?:to|for)\s+([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i
+      );
+
+      if (!recipientMatch) {
+        addAiMessage(
+          "assistant",
+          "✉️ Sure! Tell me the recipient's email address."
+        );
+
+        return;
+      }
+
+      const recipient =
+        recipientMatch[1];
+
+      const subjectMatch = command.match(
+        /subject\s*:\s*(.*?)(?=\s+(?:saying|with message|and say|and tell)\s+|$)/i
+      );
+
+      const bodyMatch = command.match(
+        /(?:saying|with message|and say|and tell)\s+(.+)$/i
+      );
+
+      const subject = subjectMatch
+        ? subjectMatch[1].trim()
+        : "";
+
+      const body = bodyMatch
+        ? bodyMatch[1].trim()
+        : "";
+
+      fillCompose({
+        to: recipient,
+        subject,
+        body,
+        isReply: false,
+        threadId: "",
+        messageId: "",
+      });
+
+      setPendingSend(true);
+
+      addAiMessage(
+        "assistant",
+        `✉️ I've prepared an email to ${recipient}.
+
+Please review the message in the compose window.
+
+Would you like me to send it? Reply "Yes" to send or "No" to cancel.`
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // MARK AS READ
+    // -----------------------------------
+    if (
+      lower.includes("mark this email as read") ||
+      lower.includes("mark this email read")
+    ) {
+      if (!selectedEmail) {
+        addAiMessage(
+          "assistant",
+          "📩 Please open an email first, then ask me to mark it as read."
+        );
+
+        return;
+      }
+
+      addAiMessage(
+        "assistant",
+        "📖 Marking this email as read..."
+      );
+
+      const success =
+        await markAsRead(
+          selectedEmail.id
+        );
+
+      addAiMessage(
+        "assistant",
+        success
+          ? "✅ Done! This email has been marked as read."
+          : "❌ I couldn't mark the email as read."
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // MARK AS UNREAD
+    // -----------------------------------
+    if (
+      lower.includes("mark this email as unread") ||
+      lower.includes("mark this email unread")
+    ) {
+      if (!selectedEmail) {
+        addAiMessage(
+          "assistant",
+          "📬 Please open an email first, then ask me to mark it as unread."
+        );
+
+        return;
+      }
+
+      addAiMessage(
+        "assistant",
+        "📬 Marking this email as unread..."
+      );
+
+      const success =
+        await markAsUnread(
+          selectedEmail.id
+        );
+
+      addAiMessage(
+        "assistant",
+        success
+          ? "✅ Done! This email has been marked as unread."
+          : "❌ I couldn't mark the email as unread."
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // DELETE EMAIL
+    // -----------------------------------
+    if (
+      lower.includes("delete this email") ||
+      lower.includes("delete this message") ||
+      lower === "delete email" ||
+      lower === "delete this"
+    ) {
+      if (!selectedEmail) {
+        addAiMessage(
+          "assistant",
+          "📩 Please open an email first, then ask me to delete it."
+        );
+
+        return;
+      }
+
+      addAiMessage(
+        "assistant",
+        "🗑️ Deleting this email..."
+      );
+
+      const success =
+        await deleteEmail(
+          selectedEmail.id
+        );
+
+      if (success) {
+        addAiMessage(
+          "assistant",
+          "✅ Email deleted successfully."
+        );
+
+        setSelectedEmail(null);
+      } else {
+        addAiMessage(
+          "assistant",
+          "❌ I couldn't delete this email."
+        );
+      }
+
+      return;
+    }
+
+    // -----------------------------------
+    // NATURAL LANGUAGE SEARCH
+    // -----------------------------------
+    const searchParts = [];
+    const searchDescriptions = [];
+
+    const daysMatch = lower.match(
+      /\b(?:last|past|within)\s+(\d+)\s+days?\b/i
+    );
+
+    const days = daysMatch
+      ? Number(daysMatch[1])
+      : null;
+
+    let filterText = lower;
+
+    if (daysMatch) {
+      filterText = filterText
+        .replace(daysMatch[0], "")
+        .trim();
+    }
+
+    filterText = filterText
+      .replace(/\s+from\s*$/i, "")
+      .trim();
+
+    // -----------------------------------
+    // DATE
+    // -----------------------------------
+    if (days && days > 0) {
+      const today = new Date();
+
+      const startDate = new Date(today);
+      startDate.setHours(0, 0, 0, 0);
+
+      // IMPORTANT:
+      // Gmail after: is exclusive.
+      // For "last N days", subtract N days.
+      startDate.setDate(
+        startDate.getDate() - days
+      );
+
+      const endDate = new Date(today);
+      endDate.setHours(0, 0, 0, 0);
+      endDate.setDate(
+        endDate.getDate() + 1
+      );
+
+      const formatGmailDate = (date) => {
+        return `${date.getFullYear()}/${String(
+          date.getMonth() + 1
+        ).padStart(2, "0")}/${String(
+          date.getDate()
+        ).padStart(2, "0")}`;
+      };
+
+      const startDateString =
+        formatGmailDate(startDate);
+
+      const endDateString =
+        formatGmailDate(endDate);
+
+      searchParts.push(
+        `after:${startDateString}`,
+        `before:${endDateString}`
+      );
+
+      searchDescriptions.push(
+        `emails from the last ${days} day${
+          days === 1 ? "" : "s"
+        }`
+      );
+
+      console.log(
+        "DATE FILTER:",
+        {
+          days,
+          startDate: startDateString,
+          endDate: endDateString,
+        }
+      );
+    }
+
+    // -----------------------------------
+    // READ / UNREAD
+    // -----------------------------------
+    const wantsUnread =
+      /\bunread\s+(?:emails?|messages?)\b/i.test(
+        filterText
+      );
+
+    const wantsRead =
+      !wantsUnread &&
+      /\bread\s+(?:emails?|messages?)\b/i.test(
+        filterText
+      );
+
+    if (wantsUnread) {
+      searchParts.push("is:unread");
+
+      searchDescriptions.push(
+        "unread emails"
+      );
+    }
+
+    if (wantsRead) {
+      searchParts.push("is:read");
+
+      searchDescriptions.push(
+        "read emails"
+      );
+    }
+
+    // -----------------------------------
+    // SENDER + KEYWORD
+    // -----------------------------------
+    const senderMatch = filterText.match(
+      /\b(?:find|show|search)\s+(?:me\s+)?(?:emails?|messages?)\s+from\s+(.+?)(?:\s+about\s+(.+))?$/i
+    );
+
+    if (senderMatch) {
+      let senderName =
+        senderMatch[1].trim();
+
+      const keyword =
+        senderMatch[2]?.trim();
+
+      senderName = senderName
+        .replace(/\s+from\s*$/i, "")
+        .trim();
+
+      if (senderName) {
+        searchParts.push(
+          `from:"${senderName}"`
+        );
+
+        searchDescriptions.push(
+          `emails from ${senderName}`
+        );
+      }
+
+      if (keyword) {
+        searchParts.push(
+          `"${keyword}"`
+        );
+
+        searchDescriptions.push(
+          `about ${keyword}`
+        );
+      }
+    }
+
+    // -----------------------------------
+    // KEYWORD WITHOUT SENDER
+    // -----------------------------------
+    if (!senderMatch) {
+      const aboutMatch =
+        filterText.match(
+          /\babout\s+(.+)$/i
+        );
+
+      if (aboutMatch) {
+        const keyword =
+          aboutMatch[1].trim();
+
+        if (keyword) {
+          searchParts.push(
+            `"${keyword}"`
+          );
+
+          searchDescriptions.push(
+            `about ${keyword}`
+          );
+        }
+      }
+    }
+
+    // -----------------------------------
+    // PROJECT EMAILS
+    // -----------------------------------
+    if (
+      /\b(?:show|find|search)\s+project\s+emails?\b/i.test(
+        filterText
+      )
+    ) {
+      searchParts.push("project");
+
+      searchDescriptions.push(
+        "about project"
+      );
+    }
+
+    const searchQuery =
+      searchParts.join(" ");
+
+    const searchDescription =
+      searchDescriptions.length
+        ? searchDescriptions.join(" and ")
+        : "";
+
+    console.log(
+      "================================="
+    );
+
+    console.log(
+      "🔎 AI SEARCH COMMAND:",
+      command
+    );
+
+    console.log(
+      "🔎 Filter text:",
+      filterText
+    );
+
+    console.log(
+      "🔎 Days:",
+      days
+    );
+
+    console.log(
+      "🔎 Search parts:",
+      searchParts
+    );
+
+    console.log(
+      "🔎 FINAL GMAIL QUERY:",
+      searchQuery
+    );
+
+    console.log(
+      "================================="
+    );
+
+    // -----------------------------------
+    // EXECUTE SEARCH
+    // -----------------------------------
+    if (searchQuery) {
+      addAiMessage(
+        "assistant",
+        `🔎 Searching for ${searchDescription}...`
+      );
+
+      const results =
+        await searchEmails(
+          searchQuery
+        );
+
+      addAiMessage(
+        "assistant",
+        results.length
+          ? `I found ${results.length} matching email${
+              results.length === 1
+                ? ""
+                : "s"
+            }.`
+          : `I couldn't find any ${searchDescription}.`
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // GEMINI FALLBACK
+    // -----------------------------------
+    const response = await fetch(
+      `${API}/api/ai`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          message: command,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    console.log(
+      "🤖 GEMINI RESPONSE:",
+      data
+    );
+
+    if (!response.ok) {
+      addAiMessage(
+        "assistant",
+        data.error ||
+          "AI request failed."
+      );
+
+      return;
+    }
+
+    // -----------------------------------
+    // GEMINI FUNCTION CALL
+    // -----------------------------------
+    if (data.type === "function_call") {
+      const {
+        name,
+        arguments: args,
+      } = data;
+
+      console.log(
+        "AI function:",
+        name
+      );
+
+      console.log(
+        "AI arguments:",
+        args
+      );
+
+      // --------------------------------
+      // FILL COMPOSE
+      // --------------------------------
+      if (name === "fillCompose") {
+        fillCompose({
+          to: args?.to || "",
+          subject:
+            args?.subject || "",
+          body: args?.body || "",
+          isReply: false,
+          threadId: "",
+          messageId: "",
+        });
+
+        setPendingSend(true);
+
+        addAiMessage(
+          "assistant",
+          `✉️ I've prepared the email for ${
+            args?.to ||
+            "the recipient"
+          }.
+
+Please review it in the compose window.
+
+Would you like me to send it? Reply "Yes" to send or "No" to cancel.`
+        );
+
+        return;
+      }
+
+      // --------------------------------
       // OPEN EMAIL
-      // -------------------------------
+      // --------------------------------
       if (name === "openEmail") {
         if (args?.emailId) {
           const email = emails.find(
-            (email) => email.id === args.emailId
+            (email) =>
+              email.id ===
+              args.emailId
           );
 
           if (email) {
             await openEmail(email);
+
             addAiMessage(
               "assistant",
-              `Opening "${email.subject || "(No subject)"}".`
+              `Opening "${
+                email.subject ||
+                "(No subject)"
+              }".`
             );
           } else {
             addAiMessage(
@@ -1242,18 +1541,23 @@ if (searchQuery) {
         return;
       }
 
-      // -------------------------------
+      // --------------------------------
       // SEARCH EMAILS
-      // -------------------------------
+      // --------------------------------
       if (name === "searchEmails") {
         if (args?.query) {
-          const results = await searchEmails(args.query);
+          const results =
+            await searchEmails(
+              args.query
+            );
 
           addAiMessage(
             "assistant",
             results.length
               ? `I found ${results.length} matching email${
-                  results.length === 1 ? "" : "s"
+                  results.length === 1
+                    ? ""
+                    : "s"
                 }.`
               : "I couldn't find any matching emails."
           );
@@ -1262,35 +1566,43 @@ if (searchQuery) {
         return;
       }
 
-      // -------------------------------
-      // DELETE EMAIL
-      // -------------------------------
+      // --------------------------------
+      // DELETE
+      // --------------------------------
       if (name === "deleteEmail") {
         if (!selectedEmail) {
           addAiMessage(
             "assistant",
             "Please open an email first, then ask me to delete it."
           );
+
           return;
         }
 
-        await deleteEmail(selectedEmail.id);
+        await deleteEmail(
+          selectedEmail.id
+        );
+
         return;
       }
 
-      // -------------------------------
+      // --------------------------------
       // MARK READ
-      // -------------------------------
+      // --------------------------------
       if (name === "markAsRead") {
         if (!selectedEmail) {
           addAiMessage(
             "assistant",
             "Please open an email first."
           );
+
           return;
         }
 
-        const success = await markAsRead(selectedEmail.id);
+        const success =
+          await markAsRead(
+            selectedEmail.id
+          );
 
         addAiMessage(
           "assistant",
@@ -1302,21 +1614,23 @@ if (searchQuery) {
         return;
       }
 
-      // -------------------------------
+      // --------------------------------
       // MARK UNREAD
-      // -------------------------------
+      // --------------------------------
       if (name === "markAsUnread") {
         if (!selectedEmail) {
           addAiMessage(
             "assistant",
             "Please open an email first."
           );
+
           return;
         }
 
-        const success = await markAsUnread(
-          selectedEmail.id
-        );
+        const success =
+          await markAsUnread(
+            selectedEmail.id
+          );
 
         addAiMessage(
           "assistant",
@@ -1329,30 +1643,38 @@ if (searchQuery) {
       }
     }
 
-    // --------------------------------
-    // NORMAL AI REPLY
-    // --------------------------------
-
+    // -----------------------------------
+    // NORMAL AI RESPONSE
+    // -----------------------------------
     if (data.reply) {
-      addAiMessage("assistant", data.reply);
+      addAiMessage(
+        "assistant",
+        data.reply
+      );
     } else {
       addAiMessage(
         "assistant",
         "I understood your request, but I couldn't determine the action."
       );
     }
+
   } catch (error) {
-    console.error("AI command error:", error);
+    console.error(
+      "AI command error:",
+      error
+    );
 
     addAiMessage(
       "assistant",
-      "Something went wrong while contacting Nebula AI."
+      `❌ Something went wrong: ${
+        error.message
+      }`
     );
+
   } finally {
     setAiLoading(false);
   }
 };
-  
   // --------------------------------
   // EXTRACT EMAIL FROM COMMAND
   // --------------------------------
@@ -1379,7 +1701,7 @@ if (!loading && !authenticated) {
         <div className="login-brand">
           <div className="mail-logo">✉</div>
           <div>
-            <h1>Nebula Mail</h1>
+            <h1>MailPilot AI</h1>
             <span>AI-powered email workspace</span>
           </div>
         </div>
@@ -1741,6 +2063,59 @@ if (!loading && !authenticated) {
                 Thinking...
               </div>
             )}
+            {pendingSend && (
+  <div className="ai-confirmation">
+    <div className="ai-confirmation-title">
+      ✋ Confirmation required
+    </div>
+
+    <div className="ai-confirmation-text">
+      Review the email and confirm before sending.
+    </div>
+
+    <div className="ai-confirmation-actions">
+      <button
+        className="confirm-send-button"
+        onClick={async () => {
+          setPendingSend(false);
+          addAiMessage(
+            "user",
+            "Yes, send it."
+          );
+
+          addAiMessage(
+            "assistant",
+            "✈️ Sending the email..."
+          );
+
+          await sendEmail();
+        }}
+      >
+        ✓ Send
+      </button>
+
+      <button
+        className="cancel-send-button"
+        onClick={() => {
+          setPendingSend(false);
+          closeCompose();
+
+          addAiMessage(
+            "user",
+            "No, cancel it."
+          );
+
+          addAiMessage(
+            "assistant",
+            "❌ Okay, I won't send it."
+          );
+        }}
+      >
+        Cancel
+      </button>
+    </div>
+  </div>
+)}
 
           </div>
 
@@ -1830,12 +2205,13 @@ if (!loading && !authenticated) {
     className="reply-button"
     onClick={() => {
       fillCompose({
-        to: extractEmail(selectedEmail.sender),
-        subject: `Re: ${
-          selectedEmail.subject || ""
-        }`,
-        body: "",
-      });
+  to: extractEmail(selectedEmail.sender),
+  subject: `Re: ${selectedEmail.subject || ""}`,
+  body: "",
+  isReply: true,
+  threadId: selectedEmail.threadId || "",
+  messageId: selectedEmail.messageId || "",
+});
     }}
   >
     ↩ Reply
@@ -1872,18 +2248,28 @@ if (!loading && !authenticated) {
       {/* COMPOSE */}
       {composeOpen && (
         <div className="compose-window">
+<div className="compose-header">
 
-          <div className="compose-header">
+  <span>
+    {compose.isReply
+      ? "Reply"
+      : "New Message"}
+  </span>
 
-            <span>New Message</span>
+  <button
+    onClick={closeCompose}
+  >
+    ×
+  </button>
 
-            <button
-              onClick={closeCompose}
-            >
-              ×
-            </button>
+</div>
 
-          </div>
+{compose.isReply && (
+  <div className="ai-draft-badge">
+    🤖 AI-generated draft — review before sending
+  </div>
+)}
+          
 
           <div className="compose-body">
 
