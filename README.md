@@ -65,7 +65,7 @@ http://localhost:5000/auth/google/callback
 
 **Screenshots**
 
-These are some screenshots in our application that shows the AI assistant controlling the UI:
+These are some screenshots of this application that shows the AI assistant controlling the UI:
 
 **Login**
 ![Login Screen](screenshots/login.png)
