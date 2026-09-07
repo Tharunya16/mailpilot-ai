@@ -27,7 +27,9 @@ cd backend
 npm install
 ```
 Create backend/.env:
+
 PORT=5000
+
 GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI=http://localhost:5000/auth/google/callback
@@ -35,8 +37,9 @@ SESSION_SECRET=YOUR_SESSION_SECRET
 GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 
 Start the backend:
+```bash
 node server.js
-
+```
 **3. Frontend**
 
 Open another terminal:
