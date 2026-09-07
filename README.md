@@ -39,6 +39,7 @@ GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 Start the backend:
 ```bash
 node server.js
+
 ```
 **3. Frontend**
 
@@ -63,6 +64,7 @@ http://localhost:5000/auth/google/callback
 - **15-second polling** — used for automatic mailbox synchronization within the project timeframe. A production version would use Gmail Push Notifications with Google Cloud Pub/Sub.
 
 **Screenshots**
+
 The demo shows the AI assistant controlling the application UI:
 
 **Login**
@@ -97,7 +99,6 @@ The demo shows the AI assistant controlling the application UI:
 5. Add production deployment with HTTPS and secure cookies
 6. Improve AI validation and confirmation for destructive actions
 
-```markdown
 **Tech Stack**
 
 - **Frontend:** React, Vite, JavaScript, CSS
