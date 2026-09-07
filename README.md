@@ -1,6 +1,7 @@
-# MailPilot AI
+**MailPilot AI**
 MailPilot AI is an AI-powered Gmail web application where users can control their email using natural-language commands.
 The application integrates with Gmail using Google OAuth 2.0 and Gmail API, while the AI assistant controls the application UI for actions such as searching, opening, composing, replying, forwarding, and managing emails.
+
 ## Features
 1.Gmail OAuth 2.0 authentication
 2.Real Inbox and Sent emails
