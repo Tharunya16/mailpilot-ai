@@ -2,16 +2,16 @@
 MailPilot AI is an AI-powered Gmail web application where users can control their email using natural-language commands.
 The application integrates with Gmail using Google OAuth 2.0 and Gmail API, while the AI assistant controls the application UI for actions such as searching, opening, composing, replying, forwarding, and managing emails.
 
-## Features
-1.Gmail OAuth 2.0 authentication
-2.Real Inbox and Sent emails
-3.Natural-language email search
-4.AI-controlled compose and reply
-5.Context-aware email actions
-6.Open latest email
-7.Mark emails as read/unread
-8.Delete and forward emails
-9.Automatic inbox synchronization
+**Features**
+- Gmail OAuth 2.0 authentication
+- Real Inbox and Sent emails
+- Natural-language email search
+- AI-controlled compose and reply
+- Context-aware email actions
+- Open latest email
+- Mark emails as read/unread
+- Delete and forward emails
+- Automatic inbox synchronization
 
 **Setup & Run Locally**
 **1. Clone the repository**
@@ -35,22 +35,24 @@ node server.js
 
 **3. Frontend**
 Open another terminal:
+```bash
 cd frontend
 npm install
 npm run dev
+```
 Open:
 http://localhost:5173
 Google OAuth redirect URI:
 http://localhost:5000/auth/google/callback
 
-**Architecture Decisions \& Trade-offs**
+**Architecture Decisions & Trade-offs**
 
---> React + Vite — used for a responsive UI and easy state management.
---> Node.js + Express — handles Gmail API operations and keeps OAuth credentials on the backend.
---> Gmail API — provides real Inbox, Sent, search, send, reply, and email-management functionality.
---> Gemini AI — interprets natural-language commands and generates contextual replies.
---> Hybrid AI approach — common commands such as search, open, reply, and mark read/unread are handled deterministically for reliability, while flexible requests can use the AI layer.
---> 15-second polling — used for automatic mailbox synchronization within the project timeframe. A production version would use Gmail Push Notifications with Google Cloud Pub/Sub.
+- **React + Vite** — used for a responsive UI and easy state management.
+- **Node.js + Express** — handles Gmail API operations and keeps OAuth credentials on the backend.
+- **Gmail API** — provides real Inbox, Sent, search, send, reply, and email-management functionality.
+- **Gemini AI** — interprets natural-language commands and generates contextual replies.
+- **Hybrid AI approach** — common commands such as search, open, reply, and mark read/unread are handled deterministically for reliability, while flexible requests can use the AI layer.
+- **15-second polling** — used for automatic mailbox synchronization within the project timeframe. A production version would use Gmail Push Notifications with Google Cloud Pub/Sub.
 
 **Screenshots**
 The demo shows the AI assistant controlling the application UI:
