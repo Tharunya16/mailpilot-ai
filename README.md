@@ -1,4 +1,5 @@
 **MailPilot AI**
+
 MailPilot AI is an AI-powered Gmail web application where users can control their email using natural-language commands.
 The application integrates with Gmail using Google OAuth 2.0 and Gmail API, while the AI assistant controls the application UI for actions such as searching, opening, composing, replying, forwarding, and managing emails.
 
@@ -21,8 +22,10 @@ git clone  https://github.com/Tharunya16/mailpilot-ai
 cd mailpilot-ai
 ```
 **2. Backend**
+```bash
 cd backend
 npm install
+```
 Create backend/.env:
 PORT=5000
 GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
@@ -35,6 +38,7 @@ Start the backend:
 node server.js
 
 **3. Frontend**
+
 Open another terminal:
 ```bash
 cd frontend
