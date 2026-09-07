@@ -18,7 +18,7 @@ The application integrates with Gmail using Google OAuth 2.0 and Gmail API, whil
 
 **1. Clone the repository**
 ```bash
-git clone  https://github.com/Tharunya16/mailpilot-ai
+git clone https://github.com/Tharunya16/mailpilot-ai
 cd mailpilot-ai
 ```
 **2. Backend**
@@ -26,10 +26,10 @@ cd mailpilot-ai
 cd backend
 npm install
 ```
-Create backend/.env:
+Create `backend/.env`:
 
+```env
 PORT=5000
-
 GOOGLE_CLIENT_ID=YOUR_GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET=YOUR_GOOGLE_CLIENT_SECRET
 GOOGLE_REDIRECT_URI=http://localhost:5000/auth/google/callback
@@ -97,10 +97,12 @@ The demo shows the AI assistant controlling the application UI:
 5. Add production deployment with HTTPS and secure cookies
 6. Improve AI validation and confirmation for destructive actions
 
+```markdown
 **Tech Stack**
-Frontend: React, Vite, JavaScript, CSS
-Backend: Node.js, Express.js, Gmail API, Google OAuth 2.0
-AI: Gemini API
+
+- **Frontend:** React, Vite, JavaScript, CSS
+- **Backend:** Node.js, Express.js, Gmail API, Google OAuth 2.0
+- **AI:** Gemini API
 
 
 
